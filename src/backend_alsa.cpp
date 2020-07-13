@@ -238,7 +238,7 @@ struct lowrider_backend_alsa::Private {
 				throw std::runtime_error("failed to start ALSA input");
 			}
 			m_running = true;
-			std::cerr << "Info: started input PCM" << std::endl;
+			std::cerr << "Info: input PCM started" << std::endl;
 		}
 
 		void output_start() {
@@ -246,7 +246,7 @@ struct lowrider_backend_alsa::Private {
 				throw std::runtime_error("failed to start ALSA output");
 			}
 			m_running = true;
-			std::cerr << "Info: started output PCM" << std::endl;
+			std::cerr << "Info: output PCM started" << std::endl;
 		}
 
 		void input_recover() {

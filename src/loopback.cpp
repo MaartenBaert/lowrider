@@ -194,6 +194,11 @@ void test_hardware() {
 
 void run_loopback() {
 
+	// loop filter parameters
+	constexpr float LOOP_FILTER_I = 0.2f;
+	constexpr float LOOP_FILTER_F1 = 6.0f;
+	constexpr float LOOP_FILTER_F2 = 10.0f;
+
 	lowrider_backend_alsa backend_alsa;
 	open_devices(backend_alsa);
 
@@ -207,15 +212,16 @@ void run_loopback() {
 	}
 
 	// calculate loop filter parameters
-	float max_loop_bandwidth = 0.02f / (1.0e-9f * (float) g_option_timer_period);
+	float loop_timestep = 1.0e-9f * (float) g_option_timer_period;
+	float max_loop_bandwidth = 1.0f / (2.0f * (float) M_PI * LOOP_FILTER_F2 * loop_timestep);
 	if(g_option_loop_bandwidth > max_loop_bandwidth) {
 		g_option_loop_bandwidth = max_loop_bandwidth;
 		std::cerr << "Warning: loop bandwidth reduced to " << g_option_loop_bandwidth << " to ensure stability" << std::endl;
 	}
 	float loop_p = 2.0f * (float) M_PI * g_option_loop_bandwidth;
-	float loop_i = 0.25f * sqr(loop_p) * 1.0e-9f * (float) g_option_timer_period;
-	float loop_f1 = 6.0f * loop_p * 1.0e-9f * (float) g_option_timer_period;
-	float loop_f2 = 10.0f * loop_p * 1.0e-9f * (float) g_option_timer_period;
+	float loop_i = LOOP_FILTER_I * sqr(loop_p) * loop_timestep;
+	float loop_f1 = LOOP_FILTER_F1 * loop_p * loop_timestep;
+	float loop_f2 = LOOP_FILTER_F2 * loop_p * loop_timestep;
 
 	// initialize loop filter
 	float nominal_ratio = (float) g_option_rate_in / (float) g_option_rate_out;
@@ -264,7 +270,7 @@ void run_loopback() {
 	timer.start(g_option_timer_period);
 
 	// warmup
-	std::cerr << "Info: starting warmup" << std::endl;
+	std::cerr << "Info: initiating warmup" << std::endl;
 	uint32_t input_samples_warmup = 0, output_samples_warmup = 0;
 	while(input_samples_warmup < 4 * g_option_buffer_in && output_samples_warmup < 4 * g_option_buffer_out) {
 
@@ -296,7 +302,9 @@ void run_loopback() {
 	}
 
 	// loopback
-	std::cerr << "Info: starting loopback" << std::endl;
+	std::cerr << "Info: initiating loopback" << std::endl;
+	bool faststart = true;
+	uint32_t faststart_steps = 0;
 	for( ; ; ) {
 
 		// should we stop?
@@ -352,9 +360,22 @@ void run_loopback() {
 		// update loop filter
 		uint32_t buffer_used = backend_alsa.output_get_buffer_used();
 		float error = (float) ((int32_t) g_option_target_level - (int32_t) buffer_used) / (float) g_option_rate_out;
+		float scaled_p = loop_p, scaled_f1 = loop_f1, scaled_f2 = loop_f2;
+		if(faststart) {
+			float scale = max_loop_bandwidth / (g_option_loop_bandwidth * (1.0f + (float) faststart_steps / LOOP_FILTER_F2));
+			if(scale > 1.0f) {
+				scaled_p *= scale;
+				scaled_f1 *= scale;
+				scaled_f2 *= scale;
+				++faststart_steps;
+			} else {
+				std::cerr << "Info: faststart complete" << std::endl;
+				faststart = false;
+			}
+		}
 		current_drift = clamp(current_drift + error * loop_i, -g_option_max_drift, g_option_max_drift);
-		current_filt1 += (error * loop_p + current_drift - current_filt1) * loop_f1;
-		current_filt2 += (current_filt1 - current_filt2) * loop_f2;
+		current_filt1 += (error * scaled_p + current_drift - current_filt1) * scaled_f1;
+		current_filt2 += (current_filt1 - current_filt2) * scaled_f2;
 
 		std::cout << buffer_used << " " << current_drift << " " << current_filt2 << std::endl;
 

@@ -45,6 +45,7 @@ void print_help() {
 	std::cout << "  --version                   Show version information." << std::endl;
 	std::cout << "  --analyze-resampler         Analyze the frequency response and accuracy of the" << std::endl;
 	std::cout << "                              resampler using the specified resampler parameters." << std::endl;
+	std::cout << "  --test-hardware             Run a hardware test and show timing statistics." << std::endl;
 	std::cout << "  --device-in=NAME            Set the input device." << std::endl;
 	std::cout << "  --device-out=NAME           Set the output device." << std::endl;
 	std::cout << "  --format-in=FORMAT          Set the input sample format (default 'any')." << std::endl;
@@ -175,7 +176,7 @@ void parse_options(int argc, char *argv[]) {
 		} else if(option == "--target-level") {
 			parse_option_value(has_value, option, value, g_option_target_level, (uint32_t) 1, (uint32_t) 1000000);
 		} else if(option == "--timer-period") {
-			parse_option_value(has_value, option, value, g_option_timer_period, (uint32_t) 1000, (uint32_t) 100000000);
+			parse_option_value(has_value, option, value, g_option_timer_period, (uint32_t) 1000, (uint32_t) 10000000);
 		} else if(option == "--loop-bandwidth") {
 			parse_option_value(has_value, option, value, g_option_loop_bandwidth, 0.001f, 10.0f);
 		} else if(option == "--max-drift") {
