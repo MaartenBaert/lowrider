@@ -210,11 +210,13 @@ void parse_options(int argc, char *argv[]) {
 	}
 
 	// check for missing options
-	if(g_option_device_in.empty()) {
-		throw std::runtime_error("missing option: --device-in");
-	}
-	if(g_option_device_out.empty()) {
-		throw std::runtime_error("missing option: --device-out");
+	if(!g_option_help && !g_option_version && !g_option_analyze_resampler) {
+		if(g_option_device_in.empty()) {
+			throw std::runtime_error("missing option: --device-in");
+		}
+		if(g_option_device_out.empty()) {
+			throw std::runtime_error("missing option: --device-out");
+		}
 	}
 
 }
