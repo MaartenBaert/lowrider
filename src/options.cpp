@@ -26,10 +26,10 @@ uint32_t g_option_period_out = 256;
 uint32_t g_option_buffer_in = 1024;
 uint32_t g_option_buffer_out = 1024;
 
-uint32_t g_option_target_level = 64;
-uint32_t g_option_timer_period = 500000;
+uint32_t g_option_target_level = 128;
+uint32_t g_option_timer_period = 620000;
 
-float g_option_loop_bandwidth = 0.05f;
+float g_option_loop_bandwidth = 0.1f;
 float g_option_max_drift = 0.002f;
 
 float g_option_resampler_passband = 0.42f;
@@ -57,9 +57,9 @@ void print_help() {
 	std::cout << "  --period-out=SIZE           Set the output period size (default 256)." << std::endl;
 	std::cout << "  --buffer-in=SIZE            Set the input buffer size (default 1024)." << std::endl;
 	std::cout << "  --buffer-out=SIZE           Set the output buffer size (default 1024)." << std::endl;
-	std::cout << "  --target-level=LEVEL        Set the targeted buffer fill level (default 64)." << std::endl;
-	std::cout << "  --timer-period=NANOSECONDS  Set the timer period (default 500000 ns)." << std::endl;
-	std::cout << "  --loop-bandwidth=FREQUENCY  Set the bandwidth of the feedback loop (default 0.05 Hz)." << std::endl;
+	std::cout << "  --target-level=LEVEL        Set the targeted buffer fill level (default 128)." << std::endl;
+	std::cout << "  --timer-period=NANOSECONDS  Set the timer period (default 620000 ns)." << std::endl;
+	std::cout << "  --loop-bandwidth=FREQUENCY  Set the bandwidth of the feedback loop (default 0.1 Hz)." << std::endl;
 	std::cout << "  --max-drift=DRIFT           Set the maximum allowed clock drift (default 0.002)." << std::endl;
 	std::cout << "  --resampler-passband=VALUE  Set the resampler passband parameter (default 0.42)." << std::endl;
 	std::cout << "  --resampler-stopband=VALUE  Set the resampler stopband parameter (default 0.50)." << std::endl;
@@ -174,6 +174,8 @@ void parse_options(int argc, char *argv[]) {
 			parse_option_value(has_value, option, value, g_option_buffer_out, (uint32_t) 1, (uint32_t) 1000000);
 		} else if(option == "--target-level") {
 			parse_option_value(has_value, option, value, g_option_target_level, (uint32_t) 1, (uint32_t) 1000000);
+		} else if(option == "--timer-period") {
+			parse_option_value(has_value, option, value, g_option_timer_period, (uint32_t) 1000, (uint32_t) 100000000);
 		} else if(option == "--loop-bandwidth") {
 			parse_option_value(has_value, option, value, g_option_loop_bandwidth, 0.001f, 10.0f);
 		} else if(option == "--max-drift") {
@@ -186,8 +188,6 @@ void parse_options(int argc, char *argv[]) {
 			parse_option_value(has_value, option, value, g_option_resampler_beta, lowrider_resampler::BETA_MIN, lowrider_resampler::BETA_MAX);
 		} else if(option == "--resampler-gain") {
 			parse_option_value(has_value, option, value, g_option_resampler_gain, 0.0f, 1000000.0f);
-		} else if(option == "--timer-period") {
-			parse_option_value(has_value, option, value, g_option_timer_period, (uint32_t) 0, (uint32_t) 1000000000);
 		} else {
 			throw std::runtime_error(make_string("invalid command-line option '", arg, "'"));
 		}

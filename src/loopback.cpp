@@ -75,7 +75,10 @@ void test_hardware() {
 		uint32_t output_blocks = 0;
 		uint32_t min_output_samples = 0, max_output_samples = 0;
 		uint64_t sum_output_samples = 0, sumsqr_output_samples = 0;
+		int64_t input_offset_m1 = 0, input_offset_m2 = 0, input_offset_m3 = 0;
+		int64_t output_offset_m1 = 0, output_offset_m2 = 0, output_offset_m3 = 0;
 
+		uint64_t start_time = last_time;
 		uint32_t loops = (uint32_t) ((uint64_t) 5000000000 / (uint64_t) g_option_timer_period);
 		for(uint32_t loop = 0; loop < loops; ++loop) {
 
@@ -89,18 +92,14 @@ void test_hardware() {
 			uint64_t current_time = get_time_nano();
 
 			// check the time
-			bool bad_time = false;
 			if(expired != 1) {
 				++timer_expired;
-				bad_time = true;
 			}
 			if(current_time < last_time + (uint64_t) g_option_timer_period * 3 / 4) {
 				++timer_early;
-				bad_time = true;
 			}
 			if(current_time > last_time + (uint64_t) g_option_timer_period * 5 / 4) {
 				++timer_late;
-				bad_time = true;
 			}
 			last_time = current_time;
 
@@ -114,7 +113,7 @@ void test_hardware() {
 
 			// read from input
 			uint32_t input_samples = backend_alsa.input_read(nullptr, g_option_buffer_in);
-			if(!bad_time && input_samples != 0) {
+			if(input_samples != 0) {
 				if(input_samples < min_input_samples || input_blocks == 0) {
 					min_input_samples = input_samples;
 				}
@@ -128,7 +127,7 @@ void test_hardware() {
 
 			// write to output
 			uint32_t output_samples = backend_alsa.output_write(nullptr, g_option_buffer_out);
-			if(!bad_time && output_samples != 0) {
+			if(output_samples != 0) {
 				if(output_samples < min_output_samples || output_blocks == 0) {
 					min_output_samples = output_samples;
 				}
@@ -140,13 +139,33 @@ void test_hardware() {
 				++output_blocks;
 			}
 
+			// calculate offsets
+			int64_t input_offset = (int64_t) sum_input_samples - (int64_t) ((current_time - start_time) * (uint64_t) g_option_rate_in / (uint64_t) 1000000000);
+			input_offset_m1 += input_offset;
+			input_offset_m2 += input_offset * loop;
+			input_offset_m3 += sqr(input_offset);
+			int64_t output_offset = (int64_t) sum_output_samples - (int64_t) ((current_time - start_time) * (uint64_t) g_option_rate_out / (uint64_t) 1000000000);
+			output_offset_m1 += output_offset;
+			output_offset_m2 += output_offset * loop;
+			output_offset_m3 += sqr(output_offset);
+
 		}
 
+		// calculate statistics
 		double avg_in = (double) sum_input_samples / (double) input_blocks;
-		double avg_out = (double) sum_output_samples / (double) output_blocks;
 		double std_in = std::sqrt((double) sumsqr_input_samples / (double) input_blocks - sqr(avg_in));
+		double avg_out = (double) sum_output_samples / (double) output_blocks;
 		double std_out = std::sqrt((double) sumsqr_output_samples / (double) output_blocks - sqr(avg_out));
+		double input_m1 = (double) input_offset_m1 / (double) loops;
+		double input_m2 = ((double) input_offset_m2 + 0.5 * (double) input_offset_m1) / sqr((double) loops);
+		double input_m3 = (double) input_offset_m3 / (double) loops;
+		double input_jitter = std::sqrt(input_m3 - 4.0 * sqr(input_m1) - 12.0 * sqr(input_m2) + 12.0 * input_m1 * input_m2);
+		double output_m1 = (double) output_offset_m1 / (double) loops;
+		double output_m2 = ((double) output_offset_m2 + 0.5 * (double) output_offset_m1) / sqr((double) loops);
+		double output_m3 = (double) output_offset_m3 / (double) loops;
+		double output_jitter = std::sqrt(output_m3 - 4.0 * sqr(output_m1) - 12.0 * sqr(output_m2) + 12.0 * output_m1 * output_m2);
 
+		// print statistics
 		std::ios_base::fmtflags flags(std::cout.flags());
 		std::cout << std::fixed << std::setprecision(2);
 		std::cout << "Stats:";
@@ -163,6 +182,8 @@ void test_hardware() {
 		std::cout << " max_out=" << max_output_samples;
 		std::cout << " avg_out=" << avg_out;
 		std::cout << " std_out=" << std_out;
+		std::cout << " jitter_in=" << input_jitter;
+		std::cout << " jitter_out=" << output_jitter;
 		std::cout << std::endl;
 		std::cout.flags(flags);
 
@@ -185,19 +206,18 @@ void run_loopback() {
 	}
 
 	// calculate loop filter parameters
-	float max_loop_bandwidth = 0.02f * (float) g_option_rate_in / (float) g_option_period_in;
+	float max_loop_bandwidth = 0.02f / (1.0e-9f * (float) g_option_timer_period);
 	if(g_option_loop_bandwidth > max_loop_bandwidth) {
 		g_option_loop_bandwidth = max_loop_bandwidth;
 		std::cerr << "Warning: loop bandwidth reduced to " << g_option_loop_bandwidth << " to ensure stability" << std::endl;
 	}
 	float loop_p = 2.0f * (float) M_PI * g_option_loop_bandwidth;
-	float loop_i = 0.25f * sqr(loop_p);
-	float loop_f1 = 6.0f * loop_p;
-	float loop_f2 = 10.0f * loop_p;
+	float loop_i = 0.25f * sqr(loop_p) * 1.0e-9f * (float) g_option_timer_period;
+	float loop_f1 = 6.0f * loop_p * 1.0e-9f * (float) g_option_timer_period;
+	float loop_f2 = 10.0f * loop_p * 1.0e-9f * (float) g_option_timer_period;
 
 	// initialize loop filter
 	float nominal_ratio = (float) g_option_rate_in / (float) g_option_rate_out;
-	float current_ratio = nominal_ratio;
 	float current_drift = 0.0f, current_filt1 = 0.0f, current_filt2 = 0.0f;
 
 	// create resampler
@@ -240,12 +260,12 @@ void run_loopback() {
 		}
 
 		// fill output buffer
-		if(backend_alsa.output_write(nullptr, 2 * g_option_target_level) != 2 * g_option_target_level) {
+		uint32_t warmup_target_level = g_option_target_level * 3 / 2;
+		if(backend_alsa.output_write(nullptr, warmup_target_level) != warmup_target_level) {
 			std::cerr << "Warning: could not fill output buffer" << std::endl;
 		}
 
 		// start input and output
-		uint32_t input_samples_warmup = 0, output_samples_warmup = 0;
 		backend_alsa.input_start();
 		backend_alsa.output_start();
 
@@ -255,6 +275,7 @@ void run_loopback() {
 
 		// warmup
 		std::cerr << "Info: starting warmup" << std::endl;
+		uint32_t input_samples_warmup = 0, output_samples_warmup = 0;
 		while(input_samples_warmup < 4 * g_option_buffer_in && output_samples_warmup < 4 * g_option_buffer_out) {
 
 			// should we stop?
@@ -278,8 +299,8 @@ void run_loopback() {
 
 			// write to output
 			uint32_t buffer_used = backend_alsa.output_get_buffer_used();
-			if(buffer_used < 2 * g_option_target_level) {
-				output_samples_warmup += backend_alsa.output_write(nullptr, 2 * g_option_target_level - buffer_used);
+			if(buffer_used < warmup_target_level) {
+				output_samples_warmup += backend_alsa.output_write(nullptr, warmup_target_level - buffer_used);
 			}
 
 		}
@@ -306,48 +327,46 @@ void run_loopback() {
 
 			// read from input
 			uint32_t input_samples = backend_alsa.input_read(input_data.data(), g_option_period_in);
-			if(input_samples == 0) {
-				continue;
-			}
+			if(input_samples != 0) {
 
-			// resample
-			uint32_t output_samples = 0;
-			if(resampler_pos < filter_length + input_samples) {
-				for(uint32_t i = 0; i < g_option_channels_in; ++i) {
-					input_resampler[i] = input_data[i] - filter_length + resampler_pos;
+				// resample
+				uint32_t output_samples = 0;
+				if(resampler_pos < filter_length + input_samples) {
+					for(uint32_t i = 0; i < g_option_channels_in; ++i) {
+						input_resampler[i] = input_data[i] - filter_length + resampler_pos;
+					}
+					resampler.set_ratio(nominal_ratio / (1.0f + clamp(current_filt2, -0.5f, 0.5f)));
+					auto p = resampler.resample(g_option_channels_in,
+												input_resampler.data(), filter_length + input_samples - resampler_pos,
+												output_data.data(), output_data_size);
+					output_samples = p.second;
+					resampler_pos += p.first;
 				}
-				resampler.set_ratio(current_ratio);
-				auto p = resampler.resample(g_option_channels_in,
-											input_resampler.data(), filter_length + input_samples - resampler_pos,
-											output_data.data(), output_data_size);
-				output_samples = p.second;
-				resampler_pos += p.first;
-			}
-			for(uint32_t i = 0; i < g_option_channels_in; ++i) {
-				std::copy(input_data[i] - filter_length + input_samples, input_data[i] + input_samples, input_data[i] - filter_length);
-			}
-			if(input_samples > resampler_pos) {
-				std::cerr << "Warning: could not resample all samples" << std::endl;
-				resampler_pos = 0;
-			} else {
-				resampler_pos -= input_samples;
-			}
+				for(uint32_t i = 0; i < g_option_channels_in; ++i) {
+					std::copy(input_data[i] - filter_length + input_samples, input_data[i] + input_samples, input_data[i] - filter_length);
+				}
+				if(input_samples > resampler_pos) {
+					std::cerr << "Warning: could not resample all samples" << std::endl;
+					resampler_pos = 0;
+				} else {
+					resampler_pos -= input_samples;
+				}
 
-			// write to output
-			if(backend_alsa.output_write(output_data.data(), output_samples) != output_samples) {
-				std::cerr << "Warning: could not write all samples" << std::endl;
+				// write to output
+				if(backend_alsa.output_write(output_data.data(), output_samples) != output_samples) {
+					std::cerr << "Warning: could not write all samples" << std::endl;
+				}
+
 			}
 
 			// update loop filter
 			uint32_t buffer_used = backend_alsa.output_get_buffer_used();
-			float error = (float) ((int32_t) (g_option_target_level + output_samples) - (int32_t) buffer_used) / (float) g_option_rate_out;
-			float dt = (float) output_samples / (float) g_option_rate_out;
-			current_drift = clamp(current_drift + error * loop_i * dt, -g_option_max_drift, g_option_max_drift);
-			current_filt1 += (error * loop_p + current_drift - current_filt1) * loop_f1 * dt;
-			current_filt2 += (current_filt1 - current_filt2) * loop_f2 * dt;
-			current_ratio = nominal_ratio / (1.0f + clamp(current_filt2, -0.5f, 0.5f));
+			float error = (float) ((int32_t) g_option_target_level - (int32_t) buffer_used) / (float) g_option_rate_out;
+			current_drift = clamp(current_drift + error * loop_i, -g_option_max_drift, g_option_max_drift);
+			current_filt1 += (error * loop_p + current_drift - current_filt1) * loop_f1;
+			current_filt2 += (current_filt1 - current_filt2) * loop_f2;
 
-			std::cout << ((int32_t) buffer_used - (int32_t) output_samples) << " " << current_drift << " " << current_filt2 << std::endl;
+			std::cout << buffer_used << " " << current_drift << " " << current_filt2 << std::endl;
 
 		}
 
