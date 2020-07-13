@@ -1,5 +1,7 @@
 #pragma once
 
+#include "aligned_memory.h"
+
 #include <cstdint>
 
 #include <utility>
@@ -58,7 +60,7 @@ private:
 	uint64_t m_ratio;
 	uint32_t m_offset;
 	uint32_t m_filter_length, m_filter_rows;
-	float *m_filter_bank;
+	lowrider_aligned_memory<float> m_filter_bank;
 
 private:
 	static constexpr uint64_t RATIO_ONE = (uint64_t) 1 << 32;
@@ -78,9 +80,6 @@ public:
 	// Initializes the resampler and generates a filter bank based on the provided filter parameters.
 	// The parameters must be within the bounds defined above.
 	lowrider_resampler(float ratio, float passband, float stopband, float beta, float gain);
-
-	// Frees the memory used by the filter bank and destroys the resampler.
-	~lowrider_resampler();
 
 	// Resets the state of the resampler, while reusing the existing filter bank.
 	void reset();

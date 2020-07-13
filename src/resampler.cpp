@@ -146,24 +146,12 @@ lowrider_resampler::lowrider_resampler(float ratio, float passband, float stopba
 	m_filter_rows = (uint32_t) std::ceil(clamp(base_rows * sinc_freq, 1.0f, 16384.0f));
 
 	// allocate filter bank
-	m_filter_bank = (float*) aligned_alloc(4 * sizeof(float), (m_filter_rows + 1) * m_filter_length * sizeof(float));
-	if(m_filter_bank == nullptr) {
-		throw std::bad_alloc();
-	}
+	m_filter_bank.allocate(4, (m_filter_rows + 1) * m_filter_length);
 
 	// generate filters
-	/*float window_scale = 1.0f / (float) (m_filter_length / 2);
-	for(unsigned int j = 0; j <= m_filter_rows; ++j) {
-		float *coef = m_filter_bank + j * m_filter_length;
-		float shift = 1.0f - (float) j / (float) m_filter_rows - (float) (m_filter_length / 2);
-		for(unsigned int i = 0; i < m_filter_length; ++i) {
-			float x = (float) i + shift;
-			coef[i] = kaiser(x * window_scale, beta) * sinc(x * sinc_freq) * sinc_freq * gain;
-		}
-	}*/
 	double window_scale = 1.0f / (double) (m_filter_length / 2);
 	for(unsigned int j = 0; j <= m_filter_rows; ++j) {
-		float *coef = m_filter_bank + j * m_filter_length;
+		float *coef = m_filter_bank.data() + j * m_filter_length;
 		double shift = 1.0f - (double) j / (double) m_filter_rows - (double) (m_filter_length / 2);
 		for(unsigned int i = 0; i < m_filter_length; ++i) {
 			double x = (double) i + shift;
@@ -171,10 +159,6 @@ lowrider_resampler::lowrider_resampler(float ratio, float passband, float stopba
 		}
 	}
 
-}
-
-lowrider_resampler::~lowrider_resampler() {
-	free(m_filter_bank);
 }
 
 void lowrider_resampler::reset() {
@@ -190,7 +174,7 @@ std::pair<uint32_t, uint32_t> lowrider_resampler::resample(uint32_t channels, co
 		// select the required filter
 		uint64_t sel = (uint64_t) m_offset * m_filter_rows;
 		uint32_t row = (uint32_t) (sel >> 32);
-		float *coef1 = m_filter_bank + row * m_filter_length;
+		float *coef1 = m_filter_bank.data() + row * m_filter_length;
 		float *coef2 = coef1 + m_filter_length;
 		float frac = (float) (uint32_t) sel * frac_scale;
 

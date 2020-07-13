@@ -1,5 +1,6 @@
 #include "loopback.h"
 
+#include "aligned_memory.h"
 #include "backend_alsa.h"
 #include "miscmath.h"
 #include "options.h"
@@ -223,163 +224,140 @@ void run_loopback() {
 	// create resampler
 	lowrider_resampler resampler(nominal_ratio, g_option_resampler_passband, g_option_resampler_stopband, g_option_resampler_beta, g_option_resampler_gain);
 
-	// calculate memory size
+	// allocate memory
 	uint32_t filter_length = resampler.get_filter_length();
 	uint32_t input_data_size = filter_length + g_option_period_in;
 	uint32_t output_data_size = (uint32_t) ((uint64_t) g_option_period_in * (uint64_t) (3 * g_option_rate_out) / (uint64_t) (2 * g_option_rate_in)) + 4;
 	uint32_t input_data_stride = (input_data_size + 3) / 4 * 4;
 	uint32_t output_data_stride = (output_data_size + 3) / 4 * 4;
-	float *input_memory = nullptr, *output_memory = nullptr;
+	lowrider_aligned_memory<float> input_memory(4, g_option_channels_in * input_data_stride);
+	lowrider_aligned_memory<float> output_memory(4, g_option_channels_out * output_data_stride);
 
-	try {
+	// initialize data pointers
+	std::vector<float*> input_data(g_option_channels_in), output_data(g_option_channels_out);
+	for(uint32_t i = 0; i < g_option_channels_in; ++i) {
+		input_data[i] = input_memory.data() + input_data_stride * i + filter_length;
+	}
+	for(uint32_t i = 0; i < g_option_channels_out; ++i) {
+		output_data[i] = output_memory.data() + output_data_stride * i + filter_length;
+	}
 
-		// allocate memory
-		input_memory = (float*) aligned_alloc(4 * sizeof(float), g_option_channels_in * input_data_stride * sizeof(float));
-		if(input_memory == nullptr) {
-			throw std::bad_alloc();
+	// initialize resampler buffer
+	std::vector<float*> input_resampler(g_option_channels_in);
+	uint32_t resampler_pos = 0;
+	for(uint32_t i = 0; i < g_option_channels_in; ++i) {
+		std::fill_n(input_data[i] - filter_length, filter_length, 0.0f);
+	}
+
+	// fill output buffer
+	uint32_t warmup_target_level = g_option_target_level * 3 / 2;
+	if(backend_alsa.output_write(nullptr, warmup_target_level) != warmup_target_level) {
+		std::cerr << "Warning: could not fill output buffer" << std::endl;
+	}
+
+	// start input and output
+	backend_alsa.input_start();
+	backend_alsa.output_start();
+
+	// start timer
+	lowrider_timer timer;
+	timer.start(g_option_timer_period);
+
+	// warmup
+	std::cerr << "Info: starting warmup" << std::endl;
+	uint32_t input_samples_warmup = 0, output_samples_warmup = 0;
+	while(input_samples_warmup < 4 * g_option_buffer_in && output_samples_warmup < 4 * g_option_buffer_out) {
+
+		// should we stop?
+		if(g_sigint_flag) {
+			return;
 		}
-		output_memory = (float*) aligned_alloc(4 * sizeof(float), g_option_channels_out * output_data_stride * sizeof(float));
-		if(output_memory == nullptr) {
-			throw std::bad_alloc();
+
+		// wait for timer
+		timer.wait();
+
+		// make sure that the input and output are still running
+		if(!backend_alsa.input_running()) {
+			throw std::runtime_error("input stopped unexpectedly");
+		}
+		if(!backend_alsa.output_running()) {
+			throw std::runtime_error("output stopped unexpectedly");
 		}
 
-		// initialize data pointers
-		std::vector<float*> input_data(g_option_channels_in), output_data(g_option_channels_out);
-		for(uint32_t i = 0; i < g_option_channels_in; ++i) {
-			input_data[i] = input_memory + input_data_stride * i + filter_length;
-		}
-		for(uint32_t i = 0; i < g_option_channels_out; ++i) {
-			output_data[i] = output_memory + output_data_stride * i + filter_length;
-		}
+		// read from input
+		input_samples_warmup += backend_alsa.input_read(nullptr, g_option_buffer_in);
 
-		// initialize resampler buffer
-		std::vector<float*> input_resampler(g_option_channels_in);
-		uint32_t resampler_pos = 0;
-		for(uint32_t i = 0; i < g_option_channels_in; ++i) {
-			std::fill_n(input_data[i] - filter_length, filter_length, 0.0f);
+		// write to output
+		uint32_t buffer_used = backend_alsa.output_get_buffer_used();
+		if(buffer_used < warmup_target_level) {
+			output_samples_warmup += backend_alsa.output_write(nullptr, warmup_target_level - buffer_used);
 		}
 
-		// fill output buffer
-		uint32_t warmup_target_level = g_option_target_level * 3 / 2;
-		if(backend_alsa.output_write(nullptr, warmup_target_level) != warmup_target_level) {
-			std::cerr << "Warning: could not fill output buffer" << std::endl;
+	}
+
+	// loopback
+	std::cerr << "Info: starting loopback" << std::endl;
+	for( ; ; ) {
+
+		// should we stop?
+		if(g_sigint_flag) {
+			return;
 		}
 
-		// start input and output
-		backend_alsa.input_start();
-		backend_alsa.output_start();
+		// wait for timer
+		timer.wait();
 
-		// start timer
-		lowrider_timer timer;
-		timer.start(g_option_timer_period);
+		// make sure that the input and output are still running
+		if(!backend_alsa.input_running()) {
+			throw std::runtime_error("input stopped unexpectedly");
+		}
+		if(!backend_alsa.output_running()) {
+			throw std::runtime_error("output stopped unexpectedly");
+		}
 
-		// warmup
-		std::cerr << "Info: starting warmup" << std::endl;
-		uint32_t input_samples_warmup = 0, output_samples_warmup = 0;
-		while(input_samples_warmup < 4 * g_option_buffer_in && output_samples_warmup < 4 * g_option_buffer_out) {
+		// read from input
+		uint32_t input_samples = backend_alsa.input_read(input_data.data(), g_option_period_in);
+		if(input_samples != 0) {
 
-			// should we stop?
-			if(g_sigint_flag) {
-				return;
+			// resample
+			uint32_t output_samples = 0;
+			if(resampler_pos < filter_length + input_samples) {
+				for(uint32_t i = 0; i < g_option_channels_in; ++i) {
+					input_resampler[i] = input_data[i] - filter_length + resampler_pos;
+				}
+				resampler.set_ratio(nominal_ratio / (1.0f + clamp(current_filt2, -0.5f, 0.5f)));
+				auto p = resampler.resample(g_option_channels_in,
+											input_resampler.data(), filter_length + input_samples - resampler_pos,
+											output_data.data(), output_data_size);
+				output_samples = p.second;
+				resampler_pos += p.first;
 			}
-
-			// wait for timer
-			timer.wait();
-
-			// make sure that the input and output are still running
-			if(!backend_alsa.input_running()) {
-				throw std::runtime_error("input stopped unexpectedly");
+			for(uint32_t i = 0; i < g_option_channels_in; ++i) {
+				std::copy(input_data[i] - filter_length + input_samples, input_data[i] + input_samples, input_data[i] - filter_length);
 			}
-			if(!backend_alsa.output_running()) {
-				throw std::runtime_error("output stopped unexpectedly");
+			if(input_samples > resampler_pos) {
+				std::cerr << "Warning: could not resample all samples" << std::endl;
+				resampler_pos = 0;
+			} else {
+				resampler_pos -= input_samples;
 			}
-
-			// read from input
-			input_samples_warmup += backend_alsa.input_read(nullptr, g_option_buffer_in);
 
 			// write to output
-			uint32_t buffer_used = backend_alsa.output_get_buffer_used();
-			if(buffer_used < warmup_target_level) {
-				output_samples_warmup += backend_alsa.output_write(nullptr, warmup_target_level - buffer_used);
+			if(backend_alsa.output_write(output_data.data(), output_samples) != output_samples) {
+				std::cerr << "Warning: could not write all samples" << std::endl;
 			}
 
 		}
 
-		// loopback
-		std::cerr << "Info: starting loopback" << std::endl;
-		for( ; ; ) {
+		// update loop filter
+		uint32_t buffer_used = backend_alsa.output_get_buffer_used();
+		float error = (float) ((int32_t) g_option_target_level - (int32_t) buffer_used) / (float) g_option_rate_out;
+		current_drift = clamp(current_drift + error * loop_i, -g_option_max_drift, g_option_max_drift);
+		current_filt1 += (error * loop_p + current_drift - current_filt1) * loop_f1;
+		current_filt2 += (current_filt1 - current_filt2) * loop_f2;
 
-			// should we stop?
-			if(g_sigint_flag) {
-				return;
-			}
+		std::cout << buffer_used << " " << current_drift << " " << current_filt2 << std::endl;
 
-			// wait for timer
-			timer.wait();
-
-			// make sure that the input and output are still running
-			if(!backend_alsa.input_running()) {
-				throw std::runtime_error("input stopped unexpectedly");
-			}
-			if(!backend_alsa.output_running()) {
-				throw std::runtime_error("output stopped unexpectedly");
-			}
-
-			// read from input
-			uint32_t input_samples = backend_alsa.input_read(input_data.data(), g_option_period_in);
-			if(input_samples != 0) {
-
-				// resample
-				uint32_t output_samples = 0;
-				if(resampler_pos < filter_length + input_samples) {
-					for(uint32_t i = 0; i < g_option_channels_in; ++i) {
-						input_resampler[i] = input_data[i] - filter_length + resampler_pos;
-					}
-					resampler.set_ratio(nominal_ratio / (1.0f + clamp(current_filt2, -0.5f, 0.5f)));
-					auto p = resampler.resample(g_option_channels_in,
-												input_resampler.data(), filter_length + input_samples - resampler_pos,
-												output_data.data(), output_data_size);
-					output_samples = p.second;
-					resampler_pos += p.first;
-				}
-				for(uint32_t i = 0; i < g_option_channels_in; ++i) {
-					std::copy(input_data[i] - filter_length + input_samples, input_data[i] + input_samples, input_data[i] - filter_length);
-				}
-				if(input_samples > resampler_pos) {
-					std::cerr << "Warning: could not resample all samples" << std::endl;
-					resampler_pos = 0;
-				} else {
-					resampler_pos -= input_samples;
-				}
-
-				// write to output
-				if(backend_alsa.output_write(output_data.data(), output_samples) != output_samples) {
-					std::cerr << "Warning: could not write all samples" << std::endl;
-				}
-
-			}
-
-			// update loop filter
-			uint32_t buffer_used = backend_alsa.output_get_buffer_used();
-			float error = (float) ((int32_t) g_option_target_level - (int32_t) buffer_used) / (float) g_option_rate_out;
-			current_drift = clamp(current_drift + error * loop_i, -g_option_max_drift, g_option_max_drift);
-			current_filt1 += (error * loop_p + current_drift - current_filt1) * loop_f1;
-			current_filt2 += (current_filt1 - current_filt2) * loop_f2;
-
-			std::cout << buffer_used << " " << current_drift << " " << current_filt2 << std::endl;
-
-		}
-
-		// free memory
-		free(output_memory);
-		output_memory = nullptr;
-		free(input_memory);
-		input_memory = nullptr;
-
-	} catch(...) {
-		free(output_memory);
-		free(input_memory);
-		throw;
 	}
 
 }

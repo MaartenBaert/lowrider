@@ -1,5 +1,6 @@
 #include "backend_alsa.h"
 
+#include "aligned_memory.h"
 #include "miscmath.h"
 #include "string_helper.h"
 
@@ -22,7 +23,7 @@ struct lowrider_backend_alsa::Private {
 		snd_pcm_format_t m_sample_format;
 		unsigned int m_channels, m_sample_rate;
 		snd_pcm_uframes_t m_period_size, m_buffer_size;
-		void *m_temp_data;
+		lowrider_aligned_memory<uint8_t> m_temp_data;
 		bool m_running;
 
 		InputOutput() {
@@ -32,12 +33,11 @@ struct lowrider_backend_alsa::Private {
 			m_sample_rate = 0;
 			m_period_size = 0;
 			m_buffer_size = 0;
-			m_temp_data = nullptr;
 			m_running = false;
 		}
 
 		void open(snd_pcm_stream_t direction, const std::string &name, lowrider_sample_format sample_format, uint32_t channels, uint32_t sample_rate, uint32_t period_size, uint32_t buffer_size) {
-			assert(m_pcm == nullptr && m_temp_data == nullptr);
+			assert(m_pcm == nullptr);
 
 			snd_pcm_hw_params_t *hw_params = nullptr;
 			snd_pcm_sw_params_t *sw_params = nullptr;
@@ -172,6 +172,35 @@ struct lowrider_backend_alsa::Private {
 					throw std::runtime_error(make_string("failed to prepare ALSA PCM '", name, "'"));
 				}
 
+				// allocate temp data
+				switch(m_sample_format) {
+					case SND_PCM_FORMAT_FLOAT: {
+						m_temp_data.allocate(16, (m_channels * m_buffer_size * sizeof(float) + 15) / 16 * 16);
+						break;
+					}
+					case SND_PCM_FORMAT_S32: {
+						m_temp_data.allocate(16, (m_channels * m_buffer_size * sizeof(int32_t) + 15) / 16 * 16);
+						break;
+					}
+					case SND_PCM_FORMAT_S24: {
+						m_temp_data.allocate(16, (m_channels * m_buffer_size * sizeof(int32_t) + 15) / 16 * 16);
+						break;
+					}
+					case SND_PCM_FORMAT_S16: {
+						m_temp_data.allocate(16, (m_channels * m_buffer_size * sizeof(int16_t) + 15) / 16 * 16);
+						break;
+					}
+					default: assert(false);
+				}
+
+				std::cerr << "Info: ALSA PCM '" << name << "'"
+						  << " direction=" << snd_pcm_stream_name(direction)
+						  << " format=" << snd_pcm_format_name(m_sample_format)
+						  << " channels=" << m_channels
+						  << " rate=" << m_sample_rate
+						  << " period=" << m_period_size
+						  << " buffer=" << m_buffer_size << std::endl;
+
 				// free parameter structures
 				snd_pcm_sw_params_free(sw_params);
 				sw_params = nullptr;
@@ -179,6 +208,10 @@ struct lowrider_backend_alsa::Private {
 				hw_params = nullptr;
 
 			} catch(...) {
+				if(m_pcm != nullptr) {
+					snd_pcm_close(m_pcm);
+					m_pcm = nullptr;
+				}
 				if(sw_params != nullptr) {
 					snd_pcm_sw_params_free(sw_params);
 					sw_params = nullptr;
@@ -190,45 +223,9 @@ struct lowrider_backend_alsa::Private {
 				throw;
 			}
 
-			std::cerr << "Info: ALSA PCM '" << name << "'"
-					  << " direction=" << snd_pcm_stream_name(direction)
-					  << " format=" << snd_pcm_format_name(m_sample_format)
-					  << " channels=" << m_channels
-					  << " rate=" << m_sample_rate
-					  << " period=" << m_period_size
-					  << " buffer=" << m_buffer_size << std::endl;
-
-			// allocate temp data
-			switch(m_sample_format) {
-				case SND_PCM_FORMAT_FLOAT: {
-					m_temp_data = aligned_alloc(16, (m_channels * m_buffer_size * sizeof(float) + 15) / 16 * 16);
-					break;
-				}
-				case SND_PCM_FORMAT_S32: {
-					m_temp_data = aligned_alloc(16, (m_channels * m_buffer_size * sizeof(int32_t) + 15) / 16 * 16);
-					break;
-				}
-				case SND_PCM_FORMAT_S24: {
-					m_temp_data = aligned_alloc(16, (m_channels * m_buffer_size * sizeof(int32_t) + 15) / 16 * 16);
-					break;
-				}
-				case SND_PCM_FORMAT_S16: {
-					m_temp_data = aligned_alloc(16, (m_channels * m_buffer_size * sizeof(int16_t) + 15) / 16 * 16);
-					break;
-				}
-				default: assert(false);
-			}
-			if(m_temp_data == nullptr) {
-				throw std::bad_alloc();
-			}
-
 		}
 
 		void close() {
-			if(m_temp_data != nullptr) {
-				free(m_temp_data);
-				m_temp_data = nullptr;
-			}
 			if(m_pcm != nullptr) {
 				snd_pcm_close(m_pcm);
 				m_pcm = nullptr;
@@ -285,7 +282,7 @@ struct lowrider_backend_alsa::Private {
 		}
 
 		uint32_t input_read(float * const *data, uint32_t size) {
-			assert(m_pcm != nullptr && m_temp_data != nullptr);
+			assert(m_pcm != nullptr);
 
 			// limit read size
 			if(size > m_buffer_size) {
@@ -293,7 +290,7 @@ struct lowrider_backend_alsa::Private {
 			}
 
 			// read the samples
-			snd_pcm_sframes_t samples_read = snd_pcm_readi(m_pcm, m_temp_data, size);
+			snd_pcm_sframes_t samples_read = snd_pcm_readi(m_pcm, m_temp_data.data(), size);
 			if(samples_read < 0) {
 				if(samples_read == -EPIPE) {
 					input_recover();
@@ -311,7 +308,7 @@ struct lowrider_backend_alsa::Private {
 			if(data != nullptr) {
 				switch(m_sample_format) {
 					case SND_PCM_FORMAT_FLOAT: {
-						float *temp = (float*) m_temp_data;
+						float *temp = (float*) m_temp_data.data();
 						for(uint32_t i = 0; i < (uint32_t) samples_read; ++i) {
 							for(uint32_t c = 0; c < m_channels; ++c) {
 								data[c][i] = *(temp++);
@@ -320,7 +317,7 @@ struct lowrider_backend_alsa::Private {
 						break;
 					}
 					case SND_PCM_FORMAT_S32: {
-						int32_t *temp = (int32_t*) m_temp_data;
+						int32_t *temp = (int32_t*) m_temp_data.data();
 						for(uint32_t i = 0; i < (uint32_t) samples_read; ++i) {
 							for(uint32_t c = 0; c < m_channels; ++c) {
 								data[c][i] = (float) *(temp++) * (float) (1.0 / 2147483648.0);
@@ -329,7 +326,7 @@ struct lowrider_backend_alsa::Private {
 						break;
 					}
 					case SND_PCM_FORMAT_S24: {
-						int32_t *temp = (int32_t*) m_temp_data;
+						int32_t *temp = (int32_t*) m_temp_data.data();
 						for(uint32_t i = 0; i < (uint32_t) samples_read; ++i) {
 							for(uint32_t c = 0; c < m_channels; ++c) {
 								data[c][i] = (float) *(temp++) * (float) (1.0 / 8388608.0);
@@ -338,7 +335,7 @@ struct lowrider_backend_alsa::Private {
 						break;
 					}
 					case SND_PCM_FORMAT_S16: {
-						int16_t *temp = (int16_t*) m_temp_data;
+						int16_t *temp = (int16_t*) m_temp_data.data();
 						for(uint32_t i = 0; i < (uint32_t) samples_read; ++i) {
 							for(uint32_t c = 0; c < m_channels; ++c) {
 								data[c][i] = (float) *(temp++) * (float) (1.0 / 32768.0);
@@ -365,16 +362,16 @@ struct lowrider_backend_alsa::Private {
 			if(data == nullptr) {
 				switch(m_sample_format) {
 					case SND_PCM_FORMAT_FLOAT: {
-						std::fill_n((float*) m_temp_data, m_channels * size, 0.0f);
+						std::fill_n((float*) m_temp_data.data(), m_channels * size, 0.0f);
 						break;
 					}
 					case SND_PCM_FORMAT_S32:
 					case SND_PCM_FORMAT_S24: {
-						std::fill_n((int32_t*) m_temp_data, m_channels * size, 0);
+						std::fill_n((int32_t*) m_temp_data.data(), m_channels * size, 0);
 						break;
 					}
 					case SND_PCM_FORMAT_S16: {
-						std::fill_n((int16_t*) m_temp_data, m_channels * size, 0);
+						std::fill_n((int16_t*) m_temp_data.data(), m_channels * size, 0);
 						break;
 					}
 					default: assert(false);
@@ -382,7 +379,7 @@ struct lowrider_backend_alsa::Private {
 			} else {
 				switch(m_sample_format) {
 					case SND_PCM_FORMAT_FLOAT: {
-						float *temp = (float*) m_temp_data;
+						float *temp = (float*) m_temp_data.data();
 						for(uint32_t i = 0; i < (uint32_t) size; ++i) {
 							for(uint32_t c = 0; c < m_channels; ++c) {
 								*(temp++) = data[c][i];
@@ -391,7 +388,7 @@ struct lowrider_backend_alsa::Private {
 						break;
 					}
 					case SND_PCM_FORMAT_S32: {
-						int32_t *temp = (int32_t*) m_temp_data;
+						int32_t *temp = (int32_t*) m_temp_data.data();
 						for(uint32_t i = 0; i < (uint32_t) size; ++i) {
 							for(uint32_t c = 0; c < m_channels; ++c) {
 								*(temp++) = (int32_t) rint32(clamp(data[c][i] * 2147483648.0f, -2147483648.0f, 2147483647.0f));
@@ -400,7 +397,7 @@ struct lowrider_backend_alsa::Private {
 						break;
 					}
 					case SND_PCM_FORMAT_S24: {
-						int32_t *temp = (int32_t*) m_temp_data;
+						int32_t *temp = (int32_t*) m_temp_data.data();
 						for(uint32_t i = 0; i < (uint32_t) size; ++i) {
 							for(uint32_t c = 0; c < m_channels; ++c) {
 								*(temp++) = (int32_t) rint32(clamp(data[c][i] * 8388608.0f, -8388608.0f, 8388607.0f));
@@ -409,7 +406,7 @@ struct lowrider_backend_alsa::Private {
 						break;
 					}
 					case SND_PCM_FORMAT_S16: {
-						int16_t *temp = (int16_t*) m_temp_data;
+						int16_t *temp = (int16_t*) m_temp_data.data();
 						for(uint32_t i = 0; i < (uint32_t) size; ++i) {
 							for(uint32_t c = 0; c < m_channels; ++c) {
 								*(temp++) = (int16_t) rint32(clamp(data[c][i] * 32768.0f, -32768.0f, 32767.0f));
@@ -422,7 +419,7 @@ struct lowrider_backend_alsa::Private {
 			}
 
 			// write the samples
-			snd_pcm_sframes_t samples_written = snd_pcm_writei(m_pcm, m_temp_data, size);
+			snd_pcm_sframes_t samples_written = snd_pcm_writei(m_pcm, m_temp_data.data(), size);
 			if(samples_written < 0) {
 				if(samples_written == -EPIPE) {
 					output_recover();
