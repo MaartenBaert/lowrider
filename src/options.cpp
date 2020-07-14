@@ -65,8 +65,8 @@ void print_help() {
 	std::cout << "  --analyze-resampler         Analyze the frequency response and accuracy of the" << std::endl;
 	std::cout << "                              resampler using the specified resampler parameters." << std::endl;
 	std::cout << "  --test-hardware             Run a hardware test and show timing statistics." << std::endl;
-	std::cout << "  --device-in=NAME            Set the input device." << std::endl;
-	std::cout << "  --device-out=NAME           Set the output device." << std::endl;
+	std::cout << "  --device-in=NAME            Set the input device (e.g. 'hw:1')." << std::endl;
+	std::cout << "  --device-out=NAME           Set the output device (e.g. 'hw:2')." << std::endl;
 	std::cout << "  --format-in=FORMAT          Set the input sample format (default 'any')." << std::endl;
 	std::cout << "  --format-out=FORMAT         Set the output sample format (default 'any')." << std::endl;
 	std::cout << "  --channels-in=NUM           Set the number of input channels (default 2)." << std::endl;
