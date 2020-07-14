@@ -117,6 +117,11 @@ struct lowrider_backend_alsa::Private {
 					throw std::runtime_error(make_string("failed to set channel count of ALSA PCM '", name, "'"));
 				}
 
+				// disable resampling
+				if(snd_pcm_hw_params_set_rate_resample(m_pcm, hw_params, 0) < 0) {
+					throw std::runtime_error(make_string("failed to disable resampling of ALSA PCM '", name, "'"));
+				}
+
 				// set sample rate
 				m_sample_rate = sample_rate;
 				if(snd_pcm_hw_params_set_rate_near(m_pcm, hw_params, &m_sample_rate, nullptr) < 0) {
@@ -168,7 +173,7 @@ struct lowrider_backend_alsa::Private {
 
 				// set period event
 				if(snd_pcm_sw_params_set_period_event(m_pcm, sw_params, 0) < 0) {
-					throw std::runtime_error(make_string("failed to set period event of ALSA PCM '", name, "'"));
+					throw std::runtime_error(make_string("failed to disable period event of ALSA PCM '", name, "'"));
 				}
 
 				// set silence threshold
