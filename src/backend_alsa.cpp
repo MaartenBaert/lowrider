@@ -212,13 +212,14 @@ struct lowrider_backend_alsa::Private {
 					default: assert(false);
 				}
 
-				std::cerr << "Info: ALSA PCM '" << name << "'"
-						  << " direction=" << snd_pcm_stream_name(direction)
-						  << " format=" << snd_pcm_format_name(m_sample_format)
-						  << " channels=" << m_channels
-						  << " rate=" << m_sample_rate
-						  << " period=" << m_period_size
-						  << " buffer=" << m_buffer_size << std::endl;
+				std::cerr << "Info: ALSA PCM '" << name << "'";
+				std::cerr << " direction=" << snd_pcm_stream_name(direction);
+				std::cerr << " format=" << snd_pcm_format_name(m_sample_format);
+				std::cerr << " channels=" << m_channels;
+				std::cerr << " rate=" << m_sample_rate;
+				std::cerr << " period=" << m_period_size;
+				std::cerr << " buffer=" << m_buffer_size;
+				std::cerr << std::endl;
 
 				// free parameter structures
 				snd_pcm_sw_params_free(sw_params);
