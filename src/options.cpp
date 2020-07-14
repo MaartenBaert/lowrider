@@ -32,6 +32,8 @@ bool g_option_version = false;
 bool g_option_analyze_resampler = false;
 bool g_option_test_hardware = false;
 
+bool g_option_trace_loopback = false;
+
 std::string g_option_device_in;
 std::string g_option_device_out;
 lowrider_sample_format g_option_format_in = lowrider_sample_format_any;
@@ -65,6 +67,7 @@ void print_help() {
 	std::cout << "  --analyze-resampler         Analyze the frequency response and accuracy of the" << std::endl;
 	std::cout << "                              resampler using the specified resampler parameters." << std::endl;
 	std::cout << "  --test-hardware             Run a hardware test and show timing statistics." << std::endl;
+	std::cout << "  --trace-loopback            Output trace data during loopback operation (for debug)." << std::endl;
 	std::cout << "  --device-in=NAME            Set the input device (e.g. 'hw:1')." << std::endl;
 	std::cout << "  --device-out=NAME           Set the output device (e.g. 'hw:2')." << std::endl;
 	std::cout << "  --format-in=FORMAT          Set the input sample format (default 'any')." << std::endl;
@@ -168,6 +171,8 @@ void parse_options(int argc, char *argv[]) {
 			parse_option_novalue(has_value, option, g_option_analyze_resampler);
 		} else if(option == "--test-hardware") {
 			parse_option_novalue(has_value, option, g_option_test_hardware);
+		} else if(option == "--trace-loopback") {
+			parse_option_novalue(has_value, option, g_option_trace_loopback);
 		} else if(option == "--device-in") {
 			parse_option_value(has_value, option, value, g_option_device_in);
 		} else if(option == "--device-out") {

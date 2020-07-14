@@ -288,8 +288,9 @@ void run_loopback() {
 	lowrider_timer timer;
 	timer.start(g_option_timer_period);
 
-	// warmup
 	std::cerr << "Info: initiating warmup" << std::endl;
+
+	// warmup
 	uint32_t input_samples_warmup = 0, output_samples_warmup = 0;
 	while(input_samples_warmup < 4 * g_option_buffer_in && output_samples_warmup < 4 * g_option_buffer_out) {
 
@@ -320,8 +321,15 @@ void run_loopback() {
 
 	}
 
-	// loopback
 	std::cerr << "Info: initiating loopback" << std::endl;
+
+	// print trace header
+	if(g_option_trace_loopback) {
+		std::cout << "Time (ns)       Input   Output   Buffer   Drift          Filter" << std::endl;
+	}
+
+	// loopback
+	uint64_t start_time = get_time_nano();
 	bool faststart = true;
 	uint32_t faststart_steps = 0;
 	for( ; ; ) {
@@ -344,10 +352,10 @@ void run_loopback() {
 
 		// read from input
 		uint32_t input_samples = backend_alsa.input_read(input_data.data(), g_option_period_in);
+		uint32_t output_samples = 0;
 		if(input_samples != 0) {
 
 			// resample
-			uint32_t output_samples = 0;
 			if(resampler_pos < filter_length + input_samples) {
 				for(uint32_t i = 0; i < g_option_channels_in; ++i) {
 					input_resampler[i] = input_data[i] - filter_length + resampler_pos;
@@ -396,7 +404,18 @@ void run_loopback() {
 		current_filt1 += (error * scaled_p + current_drift - current_filt1) * scaled_f1;
 		current_filt2 += (current_filt1 - current_filt2) * scaled_f2;
 
-		std::cout << buffer_used << " " << current_drift << " " << current_filt2 << std::endl;
+		// print trace data
+		if(g_option_trace_loopback) {
+			std::ios_base::fmtflags flags(std::cout.flags());
+			std::cout << std::setw(12) << (get_time_nano() - start_time);
+			std::cout << std::setw(9) << input_samples;
+			std::cout << std::setw(9) << output_samples;
+			std::cout << std::setw(9) << buffer_used;
+			std::cout << std::scientific << std::setw(15) << std::setprecision(5) << current_drift;
+			std::cout << std::scientific << std::setw(15) << std::setprecision(5) << current_filt2;
+			std::cout << std::endl;
+			std::cout.flags(flags);
+		}
 
 	}
 

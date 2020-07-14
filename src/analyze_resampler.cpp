@@ -41,9 +41,8 @@ void analyze_resampler() {
 	float passband = g_option_resampler_passband * (float) std::min(g_option_rate_in, g_option_rate_out);
 	float stopband = g_option_resampler_stopband * (float) std::min(g_option_rate_in, g_option_rate_out);
 
-	std::ios_base::fmtflags flags(std::cout.flags());
+	// print header
 	std::cout << "Freq (Hz)   Gain (dB)   Error (dB)" << std::endl;
-	std::cout.flags(flags);
 
 	uint32_t freqs = 480;
 	double average_error = 0.0;
@@ -117,6 +116,7 @@ void analyze_resampler() {
 		}
 		error2 /= (double) samples_out;*/
 
+		// print data
 		std::ios_base::fmtflags flags(std::cout.flags());
 		std::cout << std::fixed << std::setw(9) << std::setprecision(2) << test_freq;
 		std::cout << std::fixed << std::setw(12) << std::setprecision(2) << (10.0 * std::log10(gain));

@@ -30,6 +30,8 @@ extern bool g_option_version;
 extern bool g_option_analyze_resampler;
 extern bool g_option_test_hardware;
 
+extern bool g_option_trace_loopback;
+
 extern std::string g_option_device_in;
 extern std::string g_option_device_out;
 extern lowrider_sample_format g_option_format_in;
