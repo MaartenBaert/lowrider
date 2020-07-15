@@ -51,6 +51,7 @@ uint32_t g_option_target_level = 128;
 uint32_t g_option_timer_period = 620000;
 
 float g_option_loop_bandwidth = 0.1f;
+float g_option_initial_drift = 0.0f;
 float g_option_max_drift = 0.002f;
 
 float g_option_resampler_passband = 0.42f;
@@ -83,6 +84,7 @@ void print_help() {
 	std::cout << "  --target-level=LEVEL        Set the targeted buffer fill level (default 128)." << std::endl;
 	std::cout << "  --timer-period=NANOSECONDS  Set the timer period (default 620000 ns)." << std::endl;
 	std::cout << "  --loop-bandwidth=FREQUENCY  Set the bandwidth of the feedback loop (default 0.1 Hz)." << std::endl;
+	std::cout << "  --initial-drift=DRIFT       Set the initial clock drift estimate (default 0.0)." << std::endl;
 	std::cout << "  --max-drift=DRIFT           Set the maximum allowed clock drift (default 0.002)." << std::endl;
 	std::cout << "  --resampler-passband=VALUE  Set the resampler passband parameter (default 0.42)." << std::endl;
 	std::cout << "  --resampler-stopband=VALUE  Set the resampler stopband parameter (default 0.50)." << std::endl;
@@ -203,6 +205,8 @@ void parse_options(int argc, char *argv[]) {
 			parse_option_value(has_value, option, value, g_option_timer_period, (uint32_t) 1000, (uint32_t) 10000000);
 		} else if(option == "--loop-bandwidth") {
 			parse_option_value(has_value, option, value, g_option_loop_bandwidth, 0.001f, 10.0f);
+		} else if(option == "--initial-drift") {
+			parse_option_value(has_value, option, value, g_option_initial_drift, -0.1f, 0.1f);
 		} else if(option == "--max-drift") {
 			parse_option_value(has_value, option, value, g_option_max_drift, 0.0f, 0.1f);
 		} else if(option == "--resampler-passband") {

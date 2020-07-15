@@ -49,6 +49,7 @@ extern uint32_t g_option_target_level;
 extern uint32_t g_option_timer_period;
 
 extern float g_option_loop_bandwidth;
+extern float g_option_initial_drift;
 extern float g_option_max_drift;
 
 extern float g_option_resampler_passband;

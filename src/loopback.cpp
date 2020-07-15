@@ -214,7 +214,7 @@ void test_hardware() {
 void run_loopback() {
 
 	// loop filter parameters
-	constexpr float LOOP_FILTER_I = 0.2f;
+	constexpr float LOOP_FILTER_I = 0.25f;
 	constexpr float LOOP_FILTER_F1 = 6.0f;
 	constexpr float LOOP_FILTER_F2 = 10.0f;
 
@@ -244,7 +244,8 @@ void run_loopback() {
 
 	// initialize loop filter
 	float nominal_ratio = (float) g_option_rate_in / (float) g_option_rate_out;
-	float current_drift = 0.0f, current_filt1 = 0.0f, current_filt2 = 0.0f;
+	float current_drift = clamp(g_option_initial_drift, -g_option_max_drift, g_option_max_drift);
+	float current_filt1 = 0.0f, current_filt2 = 0.0f;
 
 	// create resampler
 	lowrider_resampler resampler(nominal_ratio, g_option_resampler_passband, g_option_resampler_stopband, g_option_resampler_beta, g_option_resampler_gain);
@@ -275,7 +276,7 @@ void run_loopback() {
 	}
 
 	// fill output buffer
-	uint32_t warmup_target_level = g_option_target_level * 3 / 2;
+	uint32_t warmup_target_level = g_option_target_level * 5 / 4;
 	if(backend_alsa.output_write(nullptr, warmup_target_level) != warmup_target_level) {
 		std::cerr << "Warning: could not fill output buffer" << std::endl;
 	}
@@ -332,12 +333,7 @@ void run_loopback() {
 	uint64_t start_time = get_time_nano();
 	bool faststart = true;
 	uint32_t faststart_steps = 0;
-	for( ; ; ) {
-
-		// should we stop?
-		if(g_sigint_flag) {
-			return;
-		}
+	while(!g_sigint_flag) {
 
 		// wait for timer
 		timer.wait();
@@ -418,5 +414,9 @@ void run_loopback() {
 		}
 
 	}
+
+	std::ios_base::fmtflags flags(std::cerr.flags());
+	std::cerr << "Info: add option --initial-drift=" << std::fixed << std::setprecision(6) << current_drift << " for faster settling next time" << std::endl;
+	std::cerr.flags(flags);
 
 }
