@@ -167,7 +167,7 @@ struct lowrider_backend_alsa::Private {
 				}
 
 				// set minimum available frames
-				if(snd_pcm_sw_params_set_avail_min(m_pcm, sw_params, 0) < 0) {
+				if(snd_pcm_sw_params_set_avail_min(m_pcm, sw_params, 1) < 0) {
 					throw std::runtime_error(make_string("failed to set minimum available frames of ALSA PCM '", name, "'"));
 				}
 
