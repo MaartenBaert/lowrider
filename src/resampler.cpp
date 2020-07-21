@@ -23,10 +23,8 @@ along with lowrider.  If not, see <http://www.gnu.org/licenses/>.
 
 #include <cassert>
 #include <cmath>
-#include <cstdlib>
 
 #include <algorithm>
-#include <new>
 
 inline float sinc(float x) {
 	return (std::abs(x) < 1.0e-4f)? 1.0f : std::sin(x * (float) M_PI) / (x * (float) M_PI);

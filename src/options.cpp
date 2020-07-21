@@ -48,7 +48,12 @@ uint32_t g_option_buffer_in = 1024;
 uint32_t g_option_buffer_out = 1024;
 
 uint32_t g_option_target_level = 128;
+
+lowrider_wakeup_mode g_option_wakeup_mode = lowrider_wakeup_mode_timer;
 uint32_t g_option_timer_period = 620000;
+
+uint32_t g_option_realtime_priority = 50;
+bool g_option_memory_lock = true;
 
 float g_option_loop_bandwidth = 0.1f;
 float g_option_initial_drift = 0.0f;
@@ -63,33 +68,39 @@ void print_help() {
 	std::cout << "Usage: lowrider [OPTION]" << std::endl;
 	std::cout << std::endl;
 	std::cout << "Options:" << std::endl;
-	std::cout << "  --help                      Show this help message." << std::endl;
-	std::cout << "  --version                   Show version information." << std::endl;
-	std::cout << "  --analyze-resampler         Analyze the frequency response and accuracy of the" << std::endl;
-	std::cout << "                              resampler using the specified resampler parameters." << std::endl;
-	std::cout << "  --test-hardware             Run a hardware test and show timing statistics." << std::endl;
-	std::cout << "  --trace-loopback            Output trace data during loopback operation (for debug)." << std::endl;
-	std::cout << "  --device-in=NAME            Set the input device (e.g. 'hw:1')." << std::endl;
-	std::cout << "  --device-out=NAME           Set the output device (e.g. 'hw:2')." << std::endl;
-	std::cout << "  --format-in=FORMAT          Set the input sample format (default 'any')." << std::endl;
-	std::cout << "  --format-out=FORMAT         Set the output sample format (default 'any')." << std::endl;
-	std::cout << "  --channels-in=NUM           Set the number of input channels (default 2)." << std::endl;
-	std::cout << "  --channels-out=NUM          Set the number of output channels (default 2)." << std::endl;
-	std::cout << "  --rate-in=RATE              Set the input sample rate (default 48000 Hz)." << std::endl;
-	std::cout << "  --rate-out=RATE             Set the output sample rate (default 48000 Hz)." << std::endl;
-	std::cout << "  --period-in=SIZE            Set the input period size (default 256)." << std::endl;
-	std::cout << "  --period-out=SIZE           Set the output period size (default 256)." << std::endl;
-	std::cout << "  --buffer-in=SIZE            Set the input buffer size (default 1024)." << std::endl;
-	std::cout << "  --buffer-out=SIZE           Set the output buffer size (default 1024)." << std::endl;
-	std::cout << "  --target-level=LEVEL        Set the targeted buffer fill level (default 128)." << std::endl;
-	std::cout << "  --timer-period=NANOSECONDS  Set the timer period (default 620000 ns)." << std::endl;
-	std::cout << "  --loop-bandwidth=FREQUENCY  Set the bandwidth of the feedback loop (default 0.1 Hz)." << std::endl;
-	std::cout << "  --initial-drift=DRIFT       Set the initial clock drift estimate (default 0.0)." << std::endl;
-	std::cout << "  --max-drift=DRIFT           Set the maximum allowed clock drift (default 0.002)." << std::endl;
-	std::cout << "  --resampler-passband=VALUE  Set the resampler passband parameter (default 0.42)." << std::endl;
-	std::cout << "  --resampler-stopband=VALUE  Set the resampler stopband parameter (default 0.50)." << std::endl;
-	std::cout << "  --resampler-beta=VALUE      Set the resampler beta parameter (default 8.0)." << std::endl;
-	std::cout << "  --resampler-gain=VALUE      Set the resampler gain parameter (default 1.0)." << std::endl;
+	std::cout << "  --help                       Show this help message." << std::endl;
+	std::cout << "  --version                    Show version information." << std::endl;
+	std::cout << "  --analyze-resampler          Analyze the frequency response and accuracy of the" << std::endl;
+	std::cout << "                               resampler using the specified resampler parameters." << std::endl;
+	std::cout << "  --test-hardware              Run a hardware test and show timing statistics." << std::endl;
+	std::cout << "  --trace-loopback             Output trace data during loopback operation (for testing)." << std::endl;
+	std::cout << "  --device-in=NAME             Set the input device (e.g. 'hw:1')." << std::endl;
+	std::cout << "  --device-out=NAME            Set the output device (e.g. 'hw:2')." << std::endl;
+	std::cout << "  --format-in=FORMAT           Set the input sample format (default 'any')." << std::endl;
+	std::cout << "                               Can be 'any', 'f32', 's32', 's24' or 's16'." << std::endl;
+	std::cout << "  --format-out=FORMAT          Set the output sample format (default 'any')." << std::endl;
+	std::cout << "                               Can be 'any', 'f32', 's32', 's24' or 's16'." << std::endl;
+	std::cout << "  --channels-in=NUM            Set the number of input channels (default 2)." << std::endl;
+	std::cout << "  --channels-out=NUM           Set the number of output channels (default 2)." << std::endl;
+	std::cout << "  --rate-in=RATE               Set the input sample rate (default 48000 Hz)." << std::endl;
+	std::cout << "  --rate-out=RATE              Set the output sample rate (default 48000 Hz)." << std::endl;
+	std::cout << "  --period-in=SIZE             Set the input period size (default 256)." << std::endl;
+	std::cout << "  --period-out=SIZE            Set the output period size (default 256)." << std::endl;
+	std::cout << "  --buffer-in=SIZE             Set the input buffer size (default 1024)." << std::endl;
+	std::cout << "  --buffer-out=SIZE            Set the output buffer size (default 1024)." << std::endl;
+	std::cout << "  --target-level=LEVEL         Set the targeted buffer fill level (default 128)." << std::endl;
+	std::cout << "  --wakeup-mode=MODE           Set the wakeup mode (default 'timer')." << std::endl;
+	std::cout << "                               Can be 'timer' or 'wait'." << std::endl;
+	std::cout << "  --timer-period=NANOSECONDS   Set the timer period (default 620000 ns)." << std::endl;
+	std::cout << "  --realtime-priority=VALUE    Set the realtime priority of the process (default 50)." << std::endl;
+	std::cout << "  --memory-lock=ENABLE         Set whether memory should be locked into RAM (default true)." << std::endl;
+	std::cout << "  --loop-bandwidth=FREQUENCY   Set the bandwidth of the feedback loop (default 0.1 Hz)." << std::endl;
+	std::cout << "  --initial-drift=DRIFT        Set the initial clock drift estimate (default 0.0)." << std::endl;
+	std::cout << "  --max-drift=DRIFT            Set the maximum allowed clock drift (default 0.002)." << std::endl;
+	std::cout << "  --resampler-passband=VALUE   Set the resampler passband parameter (default 0.42)." << std::endl;
+	std::cout << "  --resampler-stopband=VALUE   Set the resampler stopband parameter (default 0.50)." << std::endl;
+	std::cout << "  --resampler-beta=VALUE       Set the resampler beta parameter (default 8.0)." << std::endl;
+	std::cout << "  --resampler-gain=VALUE       Set the resampler gain parameter (default 1.0)." << std::endl;
 }
 
 void print_version() {
@@ -125,7 +136,21 @@ static void parse_option_value(bool has_value, const std::string &option, const 
 	result = value;
 }
 
-static void parse_option_format(bool has_value, const std::string &option, const std::string &value, lowrider_sample_format &result) {
+static void parse_option_bool(bool has_value, const std::string &option, const std::string &value, bool &result) {
+	if(!has_value) {
+		throw std::runtime_error(make_string("option '", option, "' requires a value"));
+	}
+	std::string lower = to_lower(value);
+	if(lower == "false" || lower == "off" || lower == "0") {
+		result = false;
+	} else if(lower == "true" || lower == "on" || lower == "1") {
+		result = true;
+	} else {
+		throw std::runtime_error(make_string("invalid value '", value, "' for option '", option, "'"));
+	}
+}
+
+static void parse_option_sample_format(bool has_value, const std::string &option, const std::string &value, lowrider_sample_format &result) {
 	if(!has_value) {
 		throw std::runtime_error(make_string("option '", option, "' requires a value"));
 	}
@@ -141,7 +166,21 @@ static void parse_option_format(bool has_value, const std::string &option, const
 	} else if(lower == "s16") {
 		result = lowrider_sample_format_s16;
 	} else {
-		throw std::runtime_error(make_string("unknown sample format '", value, "'"));
+		throw std::runtime_error(make_string("invalid value '", value, "' for option '", option, "'"));
+	}
+}
+
+static void parse_option_wakeup_mode(bool has_value, const std::string &option, const std::string &value, lowrider_wakeup_mode &result) {
+	if(!has_value) {
+		throw std::runtime_error(make_string("option '", option, "' requires a value"));
+	}
+	std::string lower = to_lower(value);
+	if(lower == "timer") {
+		result = lowrider_wakeup_mode_timer;
+	} else if(lower == "wait") {
+		result = lowrider_wakeup_mode_wait;
+	} else {
+		throw std::runtime_error(make_string("invalid value '", value, "' for option '", option, "'"));
 	}
 }
 
@@ -180,9 +219,9 @@ void parse_options(int argc, char *argv[]) {
 		} else if(option == "--device-out") {
 			parse_option_value(has_value, option, value, g_option_device_out);
 		} else if(option == "--format-in") {
-			parse_option_format(has_value, option, value, g_option_format_in);
+			parse_option_sample_format(has_value, option, value, g_option_format_in);
 		} else if(option == "--format-out") {
-			parse_option_format(has_value, option, value, g_option_format_out);
+			parse_option_sample_format(has_value, option, value, g_option_format_out);
 		} else if(option == "--channels-in") {
 			parse_option_value(has_value, option, value, g_option_channels_in, (uint32_t) 1, (uint32_t) 100);
 		} else if(option == "--channels-out") {
@@ -201,8 +240,14 @@ void parse_options(int argc, char *argv[]) {
 			parse_option_value(has_value, option, value, g_option_buffer_out, (uint32_t) 1, (uint32_t) 1000000);
 		} else if(option == "--target-level") {
 			parse_option_value(has_value, option, value, g_option_target_level, (uint32_t) 1, (uint32_t) 1000000);
+		} else if(option == "--wakeup-mode") {
+			parse_option_wakeup_mode(has_value, option, value, g_option_wakeup_mode);
 		} else if(option == "--timer-period") {
-			parse_option_value(has_value, option, value, g_option_timer_period, (uint32_t) 1000, (uint32_t) 10000000);
+			parse_option_value(has_value, option, value, g_option_timer_period, (uint32_t) 1000, (uint32_t) 100000000);
+		} else if(option == "--realtime-priority") {
+			parse_option_value(has_value, option, value, g_option_realtime_priority, (uint32_t) 1, (uint32_t) 99);
+		} else if(option == "--memory-lock") {
+			parse_option_bool(has_value, option, value, g_option_memory_lock);
 		} else if(option == "--loop-bandwidth") {
 			parse_option_value(has_value, option, value, g_option_loop_bandwidth, 0.001f, 10.0f);
 		} else if(option == "--initial-drift") {

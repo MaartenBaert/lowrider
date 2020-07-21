@@ -25,6 +25,11 @@ along with lowrider.  If not, see <http://www.gnu.org/licenses/>.
 
 #include <string>
 
+enum lowrider_wakeup_mode {
+	lowrider_wakeup_mode_timer,
+	lowrider_wakeup_mode_wait,
+};
+
 extern bool g_option_help;
 extern bool g_option_version;
 extern bool g_option_analyze_resampler;
@@ -46,7 +51,12 @@ extern uint32_t g_option_buffer_in;
 extern uint32_t g_option_buffer_out;
 
 extern uint32_t g_option_target_level;
+
+extern lowrider_wakeup_mode g_option_wakeup_mode;
 extern uint32_t g_option_timer_period;
+
+extern uint32_t g_option_realtime_priority;
+extern bool g_option_memory_lock;
 
 extern float g_option_loop_bandwidth;
 extern float g_option_initial_drift;

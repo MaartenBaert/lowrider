@@ -25,7 +25,6 @@ along with lowrider.  If not, see <http://www.gnu.org/licenses/>.
 
 #include <cassert>
 #include <cerrno>
-#include <cstdlib>
 
 #include <algorithm>
 #include <iostream>
@@ -55,7 +54,8 @@ struct lowrider_backend_alsa::Private {
 			m_running = false;
 		}
 
-		void open(snd_pcm_stream_t direction, const std::string &name, lowrider_sample_format sample_format, uint32_t channels, uint32_t sample_rate, uint32_t period_size, uint32_t buffer_size) {
+		void open(snd_pcm_stream_t direction, const std::string &name, lowrider_sample_format sample_format,
+				  uint32_t channels, uint32_t sample_rate, uint32_t period_size, uint32_t buffer_size, bool wait) {
 			assert(m_pcm == nullptr);
 
 			snd_pcm_hw_params_t *hw_params = nullptr;
@@ -172,8 +172,8 @@ struct lowrider_backend_alsa::Private {
 				}
 
 				// set period event
-				if(snd_pcm_sw_params_set_period_event(m_pcm, sw_params, 0) < 0) {
-					throw std::runtime_error(make_string("failed to disable period event of ALSA PCM '", name, "'"));
+				if(snd_pcm_sw_params_set_period_event(m_pcm, sw_params, (wait)? 1 : 0) < 0) {
+					throw std::runtime_error(make_string("failed to set period event of ALSA PCM '", name, "'"));
 				}
 
 				// set silence threshold
@@ -292,7 +292,7 @@ struct lowrider_backend_alsa::Private {
 			}
 		}
 
-		bool input_wait(int32_t timeout) {
+		bool input_wait(uint32_t timeout) {
 			assert(m_pcm != nullptr);
 			int wait = snd_pcm_wait(m_pcm, timeout);
 			if(wait < 0) {
@@ -376,7 +376,7 @@ struct lowrider_backend_alsa::Private {
 		}
 
 		uint32_t output_write(const float * const *data, uint32_t size) {
-			assert(m_pcm != nullptr && m_temp_data != nullptr);
+			assert(m_pcm != nullptr);
 
 			// limit write size
 			if(size > m_buffer_size) {
@@ -515,8 +515,9 @@ lowrider_backend_alsa::~lowrider_backend_alsa() {
 	delete m_private;
 }
 
-void lowrider_backend_alsa::input_open(const std::string &name, lowrider_sample_format sample_format, uint32_t channels, uint32_t sample_rate, uint32_t period_size, uint32_t buffer_size) {
-	m_private->m_input.open(SND_PCM_STREAM_CAPTURE, name, sample_format, channels, sample_rate, period_size, buffer_size);
+void lowrider_backend_alsa::input_open(const std::string &name, lowrider_sample_format sample_format, uint32_t channels,
+									   uint32_t sample_rate, uint32_t period_size, uint32_t buffer_size, bool wait) {
+	m_private->m_input.open(SND_PCM_STREAM_CAPTURE, name, sample_format, channels, sample_rate, period_size, buffer_size, wait);
 }
 
 void lowrider_backend_alsa::input_close() {
@@ -531,7 +532,7 @@ bool lowrider_backend_alsa::input_running() {
 	return m_private->m_input.m_running;
 }
 
-bool lowrider_backend_alsa::input_wait(int32_t timeout) {
+bool lowrider_backend_alsa::input_wait(uint32_t timeout) {
 	return m_private->m_input.input_wait(timeout);
 }
 
@@ -568,8 +569,9 @@ uint32_t lowrider_backend_alsa::input_get_buffer_free() {
 	return m_private->m_input.m_buffer_size - avail;
 }
 
-void lowrider_backend_alsa::output_open(const std::string &name, lowrider_sample_format sample_format, uint32_t channels, uint32_t sample_rate, uint32_t period_size, uint32_t buffer_size) {
-	m_private->m_output.open(SND_PCM_STREAM_PLAYBACK, name, sample_format, channels, sample_rate, period_size, buffer_size);
+void lowrider_backend_alsa::output_open(const std::string &name, lowrider_sample_format sample_format, uint32_t channels,
+										uint32_t sample_rate, uint32_t period_size, uint32_t buffer_size, bool wait) {
+	m_private->m_output.open(SND_PCM_STREAM_PLAYBACK, name, sample_format, channels, sample_rate, period_size, buffer_size, wait);
 }
 
 void lowrider_backend_alsa::output_close() {

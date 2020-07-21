@@ -36,14 +36,14 @@ public:
 	lowrider_backend_alsa();
 	~lowrider_backend_alsa();
 
-	void input_open(const std::string &name, lowrider_sample_format sample_format, uint32_t channels, uint32_t sample_rate, uint32_t period_size, uint32_t buffer_size);
+	void input_open(const std::string &name, lowrider_sample_format sample_format, uint32_t channels, uint32_t sample_rate, uint32_t period_size, uint32_t buffer_size, bool wait);
 	void input_close();
 	void input_start();
 	bool input_running();
 
-	// Waits until data is available or until timeout (in milliseconds). A negative value means no timeout.
+	// Waits until data is available or until timeout (in milliseconds).
 	// Returns true if data is available, or false if a timeout occurred.
-	bool input_wait(int32_t timeout);
+	bool input_wait(uint32_t timeout);
 
 	// Reads as much data as possible without waiting. If 'data' is nullptr, the data is discarded.
 	// Returns the actual number of samples read.
@@ -57,7 +57,7 @@ public:
 	uint32_t input_get_buffer_used();
 	uint32_t input_get_buffer_free();
 
-	void output_open(const std::string &name, lowrider_sample_format sample_format, uint32_t channels, uint32_t sample_rate, uint32_t period_size, uint32_t buffer_size);
+	void output_open(const std::string &name, lowrider_sample_format sample_format, uint32_t channels, uint32_t sample_rate, uint32_t period_size, uint32_t buffer_size, bool wait);
 	void output_close();
 	void output_start();
 	bool output_running();

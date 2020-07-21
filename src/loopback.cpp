@@ -30,29 +30,43 @@ along with lowrider.  If not, see <http://www.gnu.org/licenses/>.
 #include <cassert>
 #include <cmath>
 #include <cstdint>
-#include <cstdlib>
 #include <ctime>
 
 #include <algorithm>
 #include <iomanip>
 #include <iostream>
-#include <new>
 #include <stdexcept>
 #include <utility>
 #include <vector>
 
-#include <unistd.h>
+#include <sys/time.h>
+
+// timeout for wait calls
+static constexpr uint32_t WAIT_TIMEOUT = 100;
+
+// loop filter parameters
+static constexpr float LOOP_FILTER_I = 0.25f;
+static constexpr float LOOP_FILTER_F1 = 6.0f;
+static constexpr float LOOP_FILTER_F2 = 10.0f;
+
+static uint64_t get_time_nano() {
+	timespec ts;
+	clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+	return (uint64_t) ts.tv_sec * (uint64_t) 1000000000 + (uint64_t) ts.tv_nsec;
+}
 
 static void open_devices(lowrider_backend_alsa &backend_alsa) {
 
-	backend_alsa.input_open(g_option_device_in, g_option_format_in, g_option_channels_in, g_option_rate_in, g_option_period_in, g_option_buffer_in);
+	backend_alsa.input_open(g_option_device_in, g_option_format_in, g_option_channels_in, g_option_rate_in,
+							g_option_period_in, g_option_buffer_in, (g_option_wakeup_mode == lowrider_wakeup_mode_wait));
 	g_option_format_in = backend_alsa.input_get_sample_format();
 	g_option_channels_in = backend_alsa.input_get_channels();
 	g_option_rate_in = backend_alsa.input_get_sample_rate();
 	g_option_period_in = backend_alsa.input_get_period_size();
 	g_option_buffer_in = backend_alsa.input_get_buffer_size();
 
-	backend_alsa.output_open(g_option_device_out, g_option_format_out, g_option_channels_out, g_option_rate_out, g_option_period_out, g_option_buffer_out);
+	backend_alsa.output_open(g_option_device_out, g_option_format_out, g_option_channels_out, g_option_rate_out,
+							 g_option_period_out, g_option_buffer_out, false);
 	g_option_format_out = backend_alsa.input_get_sample_format();
 	g_option_channels_out = backend_alsa.output_get_channels();
 	g_option_rate_out = backend_alsa.output_get_sample_rate();
@@ -61,10 +75,18 @@ static void open_devices(lowrider_backend_alsa &backend_alsa) {
 
 }
 
-static uint64_t get_time_nano() {
-	timespec ts;
-	clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
-	return (uint64_t) ts.tv_sec * (uint64_t) 1000000000 + (uint64_t) ts.tv_nsec;
+// Returns true for normal wakeup, false for abnormal wakeup (e.g. timeout, more than one timer expiration)
+static bool wait_for_wakeup(lowrider_timer &timer, lowrider_backend_alsa &backend_alsa) {
+	switch(g_option_wakeup_mode) {
+		case lowrider_wakeup_mode_timer: {
+			return (timer.wait() == 1);
+		}
+		case lowrider_wakeup_mode_wait: {
+			return backend_alsa.input_wait(WAIT_TIMEOUT);
+		}
+	}
+	assert(false);
+	return false;
 }
 
 void test_hardware() {
@@ -81,14 +103,29 @@ void test_hardware() {
 	backend_alsa.input_start();
 	backend_alsa.output_start();
 
+	// calculate wakeup period
+	uint32_t wakeup_period;
+	switch(g_option_wakeup_mode) {
+		case lowrider_wakeup_mode_timer: {
+			wakeup_period = g_option_timer_period;
+			break;
+		}
+		case lowrider_wakeup_mode_wait: {
+			wakeup_period = (uint64_t) 1000000000 * (uint64_t) g_option_period_in / (uint64_t) g_option_rate_in;
+			break;
+		}
+	}
+
 	// start timer
 	lowrider_timer timer;
-	timer.start(g_option_timer_period);
+	if(g_option_wakeup_mode == lowrider_wakeup_mode_timer) {
+		timer.start(g_option_timer_period);
+	}
 	uint64_t last_time = get_time_nano();
 
 	for( ; ; ) {
 
-		uint32_t timer_expired = 0, timer_early = 0, timer_late = 0;
+		uint32_t wakeup_timeout = 0, wakeup_early = 0, wakeup_late = 0;
 		uint32_t input_blocks = 0;
 		uint32_t min_input_samples = 0, max_input_samples = 0;
 		uint64_t sum_input_samples = 0, sumsqr_input_samples = 0;
@@ -99,7 +136,7 @@ void test_hardware() {
 		int64_t output_offset_m1 = 0, output_offset_m2 = 0, output_offset_m3 = 0;
 
 		uint64_t start_time = last_time;
-		uint32_t loops = (uint32_t) ((uint64_t) 5000000000 / (uint64_t) g_option_timer_period);
+		uint32_t loops = (uint32_t) ((uint64_t) 5000000000 / (uint64_t) wakeup_period);
 		for(uint32_t loop = 0; loop < loops; ++loop) {
 
 			// should we stop?
@@ -108,18 +145,18 @@ void test_hardware() {
 			}
 
 			// wait for timer
-			uint32_t expired = timer.wait();
-			uint64_t current_time = get_time_nano();
+			bool wait_normal = wait_for_wakeup(timer, backend_alsa);
+			if(!wait_normal) {
+				++wakeup_timeout;
+			}
 
 			// check the time
-			if(expired != 1) {
-				++timer_expired;
+			uint64_t current_time = get_time_nano();
+			if(current_time < last_time + (uint64_t) wakeup_period * 3 / 4) {
+				++wakeup_early;
 			}
-			if(current_time < last_time + (uint64_t) g_option_timer_period * 3 / 4) {
-				++timer_early;
-			}
-			if(current_time > last_time + (uint64_t) g_option_timer_period * 5 / 4) {
-				++timer_late;
+			if(current_time > last_time + (uint64_t) wakeup_period * 5 / 4) {
+				++wakeup_late;
 			}
 			last_time = current_time;
 
@@ -189,9 +226,9 @@ void test_hardware() {
 		std::ios_base::fmtflags flags(std::cout.flags());
 		std::cout << std::fixed << std::setprecision(2);
 		std::cout << "Stats:";
-		std::cout << " expired=" << timer_expired;
-		std::cout << " early=" << timer_early;
-		std::cout << " late=" << timer_late;
+		std::cout << " timeout=" << wakeup_timeout;
+		std::cout << " early=" << wakeup_early;
+		std::cout << " late=" << wakeup_late;
 		std::cout << " blocks_in=" << input_blocks;
 		std::cout << " min_in=" << min_input_samples;
 		std::cout << " max_in=" << max_input_samples;
@@ -213,11 +250,6 @@ void test_hardware() {
 
 void run_loopback() {
 
-	// loop filter parameters
-	constexpr float LOOP_FILTER_I = 0.25f;
-	constexpr float LOOP_FILTER_F1 = 6.0f;
-	constexpr float LOOP_FILTER_F2 = 10.0f;
-
 	lowrider_backend_alsa backend_alsa;
 	open_devices(backend_alsa);
 
@@ -231,7 +263,17 @@ void run_loopback() {
 	}
 
 	// calculate loop filter parameters
-	float loop_timestep = 1.0e-9f * (float) g_option_timer_period;
+	float loop_timestep;
+	switch(g_option_wakeup_mode) {
+		case lowrider_wakeup_mode_timer: {
+			loop_timestep = 1.0e-9f * (float) g_option_timer_period;
+			break;
+		}
+		case lowrider_wakeup_mode_wait: {
+			loop_timestep = std::min(1.0e-3f * (float) WAIT_TIMEOUT, (float) g_option_period_in / (float) g_option_rate_in);
+			break;
+		}
+	}
 	float max_loop_bandwidth = 1.0f / (2.0f * (float) M_PI * LOOP_FILTER_F2 * loop_timestep);
 	if(g_option_loop_bandwidth > max_loop_bandwidth) {
 		g_option_loop_bandwidth = max_loop_bandwidth;
@@ -252,8 +294,8 @@ void run_loopback() {
 
 	// allocate memory
 	uint32_t filter_length = resampler.get_filter_length();
-	uint32_t input_data_size = filter_length + g_option_period_in;
-	uint32_t output_data_size = (uint32_t) ((uint64_t) g_option_period_in * (uint64_t) (3 * g_option_rate_out) / (uint64_t) (2 * g_option_rate_in)) + 4;
+	uint32_t input_data_size = filter_length + g_option_buffer_in;
+	uint32_t output_data_size = (uint32_t) ((uint64_t) g_option_buffer_in * (uint64_t) (3 * g_option_rate_out) / (uint64_t) (2 * g_option_rate_in)) + 4;
 	uint32_t input_data_stride = (input_data_size + 3) / 4 * 4;
 	uint32_t output_data_stride = (output_data_size + 3) / 4 * 4;
 	lowrider_aligned_memory<float> input_memory(4, g_option_channels_in * input_data_stride);
@@ -287,7 +329,9 @@ void run_loopback() {
 
 	// start timer
 	lowrider_timer timer;
-	timer.start(g_option_timer_period);
+	if(g_option_wakeup_mode == lowrider_wakeup_mode_timer) {
+		timer.start(g_option_timer_period);
+	}
 
 	std::cerr << "Info: initiating warmup" << std::endl;
 
@@ -297,11 +341,12 @@ void run_loopback() {
 
 		// should we stop?
 		if(g_sigint_flag) {
+			std::cerr << "Info: received SIGINT" << std::endl;
 			return;
 		}
 
-		// wait for timer
-		timer.wait();
+		// wait for wakeup
+		wait_for_wakeup(timer, backend_alsa);
 
 		// make sure that the input and output are still running
 		if(!backend_alsa.input_running()) {
@@ -335,8 +380,17 @@ void run_loopback() {
 	uint32_t faststart_steps = 0;
 	while(!g_sigint_flag) {
 
-		// wait for timer
-		timer.wait();
+		// wait for wakeup
+		switch(g_option_wakeup_mode) {
+			case lowrider_wakeup_mode_timer: {
+				timer.wait();
+				break;
+			}
+			case lowrider_wakeup_mode_wait: {
+				backend_alsa.input_wait(100);
+				break;
+			}
+		}
 
 		// make sure that the input and output are still running
 		if(!backend_alsa.input_running()) {
@@ -347,7 +401,7 @@ void run_loopback() {
 		}
 
 		// read from input
-		uint32_t input_samples = backend_alsa.input_read(input_data.data(), g_option_period_in);
+		uint32_t input_samples = backend_alsa.input_read(input_data.data(), g_option_buffer_in);
 		uint32_t output_samples = 0;
 		if(input_samples != 0) {
 
@@ -414,6 +468,7 @@ void run_loopback() {
 		}
 
 	}
+	std::cerr << "Info: received SIGINT" << std::endl;
 
 	std::ios_base::fmtflags flags(std::cerr.flags());
 	std::cerr << "Info: add option --initial-drift=" << std::fixed << std::setprecision(6) << current_drift << " for faster settling next time" << std::endl;

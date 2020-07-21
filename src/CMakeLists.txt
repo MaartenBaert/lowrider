@@ -16,15 +16,17 @@ set(sources
 	analyze_resampler.h
 	backend_alsa.cpp
 	backend_alsa.h
-	sample_format.h
 	loopback.cpp
 	loopback.h
 	main.cpp
 	miscmath.h
 	options.cpp
 	options.h
+	priority.cpp
+	priority.h
 	resampler.cpp
 	resampler.h
+	sample_format.h
 	signals.cpp
 	signals.h
 	string_helper.h

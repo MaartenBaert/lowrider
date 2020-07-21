@@ -25,6 +25,7 @@ along with lowrider.  If not, see <http://www.gnu.org/licenses/>.
 
 #include <stdexcept>
 
+#include <sys/time.h>
 #include <sys/timerfd.h>
 #include <unistd.h>
 

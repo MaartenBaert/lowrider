@@ -25,9 +25,12 @@ along with lowrider.  If not, see <http://www.gnu.org/licenses/>.
 
 #include <cassert>
 #include <cmath>
+#include <cstdint>
 
+#include <algorithm>
 #include <iomanip>
 #include <iostream>
+#include <utility>
 #include <vector>
 
 void analyze_resampler() {

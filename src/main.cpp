@@ -20,6 +20,7 @@ along with lowrider.  If not, see <http://www.gnu.org/licenses/>.
 #include "analyze_resampler.h"
 #include "loopback.h"
 #include "options.h"
+#include "priority.h"
 #include "signals.h"
 
 #include <cstdlib>
@@ -31,11 +32,15 @@ int main(int argc, char *argv[]) {
 
 	try {
 
+		// register signals
+		register_signals();
+
 		// parse options
 		parse_options(argc, argv);
 
-		// register signals
-		register_signals();
+		// initialization
+		set_realtime_priority();
+		set_memory_lock();
 
 		// run the program
 		if(g_option_help) {
