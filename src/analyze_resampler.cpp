@@ -122,8 +122,8 @@ void analyze_resampler() {
 		// print data
 		std::ios_base::fmtflags flags(std::cout.flags());
 		std::cout << std::fixed << std::setw(9) << std::setprecision(2) << test_freq;
-		std::cout << std::fixed << std::setw(12) << std::setprecision(2) << (10.0 * std::log10(gain));
-		std::cout << std::fixed << std::setw(13) << std::setprecision(2) << (10.0 * std::log10(2.0 * error));
+		std::cout << std::fixed << std::setw(12) << std::setprecision(3) << (10.0 * std::log10(gain));
+		std::cout << std::fixed << std::setw(13) << std::setprecision(3) << (10.0 * std::log10(2.0 * error));
 		/*std::cout << std::fixed << std::setw(13) << std::setprecision(2) << (10.0 * std::log10(2.0 * error2));
 		std::cout << std::fixed << std::setw(13) << std::setprecision(2) << dot_sin_cos;*/
 		std::cout << std::endl;
