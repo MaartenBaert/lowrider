@@ -19,6 +19,7 @@ along with lowrider.  If not, see <http://www.gnu.org/licenses/>.
 
 #include "resampler.h"
 
+#include "bessel.h"
 #include "miscmath.h"
 
 #include <cassert>
@@ -26,105 +27,8 @@ along with lowrider.  If not, see <http://www.gnu.org/licenses/>.
 
 #include <algorithm>
 
-inline float sinc(float x) {
-	return (std::abs(x) < 1.0e-4f)? 1.0f : std::sin(x * (float) M_PI) / (x * (float) M_PI);
-}
-
 inline double sinc(double x) {
 	return (std::abs(x) < 1.0e-9)? 1.0 : std::sin(x * (double) M_PI) / (x * (double) M_PI);
-}
-
-inline float bessel_i0(float x) {
-	assert(x >= 0.0f);
-	if(x < 4.0f) {
-		float p = 0.0f, t = x / 4.0f;
-		p = p * t + 2.976967e-02f;
-		p = p * t - 8.944015e-02f;
-		p = p * t + 2.472905e-01f;
-		p = p * t - 2.102603e-01f;
-		p = p * t + 6.092336e-01f;
-		p = p * t - 8.754104e-02f;
-		p = p * t + 1.809474e+00f;
-		p = p * t - 7.709405e-03f;
-		p = p * t + 4.001216e+00f;
-		p = p * t - 1.164405e-04f;
-		p = p * t + 4.000006e+00f;
-		p = p * t - 1.359807e-07f;
-		p = p * t + 1.000000e+00f;
-		return p;
-	} else {
-		float p = 0.0f, t = 4.0f / x;
-		p = p * t + 9.256256e-03f;
-		p = p * t - 6.370068e-02f;
-		p = p * t + 1.894629e-01f;
-		p = p * t - 3.180811e-01f;
-		p = p * t + 3.316216e-01f;
-		p = p * t - 2.245450e-01f;
-		p = p * t + 1.012653e-01f;
-		p = p * t - 3.044211e-02f;
-		p = p * t + 6.270247e-03f;
-		p = p * t - 3.237180e-04f;
-		p = p * t + 1.813388e-03f;
-		p = p * t + 1.246446e-02f;
-		p = p * t + 3.989423e-01f;
-		return p * std::exp(x) / std::sqrt(x);
-	}
-}
-
-inline double bessel_i0(double x) {
-	if(x < 5.0) {
-		double p = 0.0, t = x / 5.0 * 2.0 - 1.0;
-		p = p * t + 7.74576540800919304e-11;
-		p = p * t + 3.43260953673822710e-10;
-		p = p * t + 2.29943069093013127e-09;
-		p = p * t + 1.75512397221419985e-08;
-		p = p * t + 1.25474839385967770e-07;
-		p = p * t + 8.11843452726015733e-07;
-		p = p * t + 5.09192335749760076e-06;
-		p = p * t + 2.89363192499752772e-05;
-		p = p * t + 1.58012403747176931e-04;
-		p = p * t + 7.72712220051228809e-04;
-		p = p * t + 3.59015934014472781e-03;
-		p = p * t + 1.47067692366668178e-02;
-		p = p * t + 5.63355063502382486e-02;
-		p = p * t + 1.85962516759611229e-01;
-		p = p * t + 5.60335052556681257e-01;
-		p = p * t + 1.40237721617911415e+00;
-		p = p * t + 3.07482079878055803e+00;
-		p = p * t + 5.22429631812787676e+00;
-		p = p * t + 7.13485201854592876e+00;
-		p = p * t + 6.29179061322175492e+00;
-		p = p * t + 3.28983914405012179e+00;
-		return p;
-	} else {
-		double p = 0.0, t = 5.0 / x * 2.0 - 1.0;
-		p = p * t - 7.86791617247035831e-09;
-		p = p * t - 1.00530110761183567e-07;
-		p = p * t + 2.00992037029333895e-07;
-		p = p * t + 4.34160662975923923e-07;
-		p = p * t - 9.06281731216786455e-07;
-		p = p * t - 8.04515875527666453e-07;
-		p = p * t + 2.08812613689774853e-06;
-		p = p * t + 8.33820323156281170e-07;
-		p = p * t - 3.28778426349098506e-06;
-		p = p * t - 6.36789761595481956e-07;
-		p = p * t + 4.30979371981555338e-06;
-		p = p * t + 1.16177045793733166e-06;
-		p = p * t - 5.16510588300618181e-06;
-		p = p * t - 4.53780572965321393e-06;
-		p = p * t + 2.35346418052302895e-06;
-		p = p * t + 1.00552431959749950e-05;
-		p = p * t + 2.13388450957766881e-05;
-		p = p * t + 6.71944990037508168e-05;
-		p = p * t + 4.10576613336662065e-04;
-		p = p * t + 5.66012665634273420e-03;
-		p = p * t + 4.04244506336700837e-01;
-		return p * std::exp(x) / std::sqrt(x);
-	}
-}
-
-inline float kaiser(float x, float beta) {
-	return bessel_i0(beta * std::sqrt(std::max(0.0f, 1.0f - sqr(x)))) / bessel_i0(beta);
 }
 
 inline double kaiser(double x, double beta) {

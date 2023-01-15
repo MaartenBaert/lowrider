@@ -16,6 +16,8 @@ set(sources
 	analyze_resampler.h
 	backend_alsa.cpp
 	backend_alsa.h
+	bessel.cpp
+	bessel.h
 	loopback.cpp
 	loopback.h
 	main.cpp
